@@ -1,7 +1,7 @@
 import pandas as pd 
 import numpy as np
 import matplotlib.pyplot as plt
-
+#fdsfhskjfhsdkfhsdkfhjks
 class GetData: # enter the price column as close 
     def __init__(self, data_source, factor): #file path for the data 
         df = pd.read_csv(data_source, parse_dates=['date'], index_col='date')
