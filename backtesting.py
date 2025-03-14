@@ -1,12 +1,11 @@
 import pandas as pd 
 import numpy as np
 import matplotlib.pyplot as plt
-#fdsfhskjfhsdkfhsdkfhjks
+
 class GetData: # enter the price column as close 
-    def __init__(self, data_source, factor): #file path for the data 
+    def __init__(self, data_source, col_to_retreive): #file path for the data 
         df = pd.read_csv(data_source, parse_dates=['date'], index_col='date')
-        self.data = df[[factor, 'close', 'ticker']].dropna()
-        self.factor = factor
+        self.data = df[col_to_retreive].dropna()
 
     def get_data(self, start_date):
         start_date = pd.Timestamp(start_date)
@@ -37,7 +36,7 @@ class random_strategy:
         return self.data
 
 class PortfolioManager:
-    def __init__(self, initial_cash=100000):
+    def __init__(self, initial_cash):
         self.cash = initial_cash
         self.positions = {} # pos[ticker] = [timestamp, price, shares]
         self.trading_engine = ExecutionEngine()
@@ -46,21 +45,36 @@ class PortfolioManager:
         if signal == 1:  
             if ticker not in self.positions:
                self.positions[ticker] = [date, price, 0]  # Initialize if not held
-            self.positions[ticker][1] = price  # Update price
+            else:
+               self.positions[ticker][0] = date  # Initialize if not held
+               self.positions[ticker][1] = price  # Initialize if not held
 
         elif signal == 0 and ticker in self.positions:  # Sell
             shares_held = self.positions[ticker][2]
-            if shares_held > 0:
-                selling_price = self.trading_engine.execute_order(price, 0)
-                selling_value = shares_held * selling_price
-                self.cash += selling_value
-                del self.positions[ticker]  
+            selling_price = self.trading_engine.execute_order(price, 0)
+            selling_value = shares_held * selling_price
+            self.cash += selling_value
+            del self.positions[ticker]  
 
     def adjust_portfolio(self, output_order): #equally weighted
         num_positions = len(self.positions)
         if num_positions == 0:
             return 
-        target_allocation = (self.get_portfolio_value() + self.cash) / num_positions
+        target_allocation = (self.get_portfolio_value() + self.cash) // num_positions
+
+        for ticker in self.positions:
+              current_price = self.positions[ticker][1]
+              current_shares = self.positions[ticker][2]
+              target_shares = target_allocation // current_price
+  
+              if current_shares > target_shares:
+                  shares_to_sell = current_shares - target_shares
+                  trade_price = self.trading_engine.execute_order(current_price, 0)
+                  trading_value = shares_to_sell * trade_price
+  
+                  self.cash += trading_value
+                  self.positions[ticker][2] -= shares_to_sell
+
         for ticker in self.positions:
             current_price = self.positions[ticker][1]
             current_shares = self.positions[ticker][2]
@@ -72,14 +86,6 @@ class PortfolioManager:
                 if trading_cost <= self.cash:  # Check if enough cash is available
                     self.cash -= trading_cost
                     self.positions[ticker][2] += shares_to_buy
-
-            elif current_shares > target_shares:
-                shares_to_sell = current_shares - target_shares
-                trade_price = self.trading_engine.execute_order(current_price, 0)
-                trading_value = shares_to_sell * trade_price
-
-                self.cash += trading_value
-                self.positions[ticker][2] -= shares_to_sell
 
     def get_portfolio_value(self):
         return sum(self.positions[ticker][1] * self.positions[ticker][2] for ticker in self.positions)
@@ -103,9 +109,11 @@ class Backtest:
         self.execution_engine = execution_engine
         self.past_value = []
         self.past_date = []
-    
+        self.market_idx = []
+   
     def run(self, start_date, output_order = False):
         data = self.data_handler.get_data(start_date)
+        mrk_idx = None
         if not len(data):
             print(f"no trading activity at {start_date}")
             return 
@@ -121,33 +129,36 @@ class Backtest:
 
         self.pm.adjust_portfolio(output_order)
         self.past_date.append(start_date)
-        print(self.pm.cash, self.pm.get_portfolio_value())
         self.past_value.append(self.pm.cash + self.pm.get_portfolio_value())
+        self.market_idx.append(row["close_tai_idx"])
 
 class PerformanceMetrics:
     @staticmethod
-    def calculate_returns(dates, portfolio_values):
+    def calculate_returns(dates, portfolio_values, market_idx = []):
         if len(portfolio_values) < 2:
             return None  # Not enough data
     
         dates = pd.to_datetime(dates)
         df = pd.DataFrame({'Date': dates, 'Portfolio_Value': portfolio_values})
         df.set_index('Date', inplace=True)
-        # Calculate percentage change (simple return)
+
         df['Return'] = df['Portfolio_Value'].pct_change()
-    
-        # Compute actual time difference in days
         df['Days_Diff'] = df.index.to_series().diff().dt.days
-    
-        # Compute annualized return dynamically
         df['Annualized_Return'] = (1 + df['Return']) ** (365 / df['Days_Diff']) - 1
-        print(df['Annualized_Return'])
+
         plt.figure(figsize=(10, 5))
-        plt.plot(df.index, 100 * df['Annualized_Return'], label='Annualized Return %', color='blue')
+   
+        if len(market_idx):
+           df['market_idx'] = market_idx 
+           df['Market_Return'] = df['market_idx'].pct_change()
+           df['Annualized_Market_Return'] = (1 + df['Market_Return']) ** (365 / df['Days_Diff']) - 1
+           plt.plot(df.index, 100 * df['Annualized_Market_Return'], label='Annualized Market Return %', color='red')
+   
+        plt.plot(df.index, 100 * df['Annualized_stratgy_Return'], label='Annualized Return %', color='blue')
         plt.axhline(0, color='black', linestyle='--', linewidth=0.8)
         plt.xlabel("Date")
         plt.ylabel("Annualized Return %")
-        plt.title("Rolling Annualized Return Over Time")
+        plt.title("Annualized Return Over Time")
         plt.legend()
         plt.grid(True)
         plt.show()  
@@ -167,23 +178,28 @@ class PerformanceMetrics:
         return max_drawdown
     
     @staticmethod
-    def calculate_position_value(timestamps, values):
+    def calculate_position_value(timestamps, portfolio_values):
         plt.figure(figsize=(8, 5))
-        plt.plot(timestamps, values, marker='o', linestyle='-')
+        plt.plot(timestamps, portfolio_values, marker='o', linestyle='-')
         plt.xlabel("Timestamp")
         plt.ylabel("Value")
         plt.title("Timestamp vs Value")
         plt.grid(True)
         plt.show()          
 
-Data = GetData(r'C:\Users\bryan\OneDrive\桌面\python\tsa\merge_df.csv', 'marketcap')
+df = pd.read_csv(r'C:\Users\bryan\OneDrive\桌面\python\tsa\merge_df.csv')
+Data = GetData(r'C:\Users\bryan\OneDrive\桌面\python\tsa\merge_df.csv', ['marketcap', 
+                                                                       'close', 
+                                                                       'ticker',
+                                                                       'close_tai_idx'])
 testing = Backtest(Data, 
                    ranking_strategy(data = None, factor = 'marketcap', threshold = 0.1, get_lowest = True), 
                    PortfolioManager(initial_cash = 100000), 
                    ExecutionEngine(slippage = 0.01))
 # # print(Data.data)
-for time_idx in sorted(set(Data.data.index))[100:]:
+for time_idx in sorted(set(Data.data.index))[50:]:
     testing.run(time_idx, output_order = False)
 
-PerformanceMetrics.calculate_returns(testing.past_date, testing.past_value)
-print(testing.past_value)
+a = PerformanceMetrics.calculate_returns(testing.past_date, testing.past_value, testing.market_idx)
+# pd.set_option('display.max_rows', None)
+# print(a)
