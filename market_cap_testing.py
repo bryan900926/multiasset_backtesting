@@ -5,7 +5,7 @@ from Get_data import GetData
 from strategy import random_strategy, ranking_strategy
 from Performance_metric import PerformanceMetrics
 from backtesting import Backtest
-from trading_egine import ExecutionEngine
+from trading_engine import ExecutionEngine
 from Portfolio import PortfolioManager
 
 
@@ -19,9 +19,10 @@ testing = Backtest(Data,
                    PortfolioManager(initial_cash = 100000), 
                    ExecutionEngine(slippage = 0.01))
 # # print(Data.data)
-for time_idx in sorted(set(Data.data.index))[50:]:
+for time_idx in sorted(set(Data.data.index)):
     testing.run(time_idx, output_order = False)
 
-a = PerformanceMetrics.calculate_returns(testing.past_date, testing.past_value, testing.market_idx)
+return_df = PerformanceMetrics.calculate_returns(testing.past_date, testing.past_value, testing.market_idx)
+PerformanceMetrics.calculate_sharpe_ratio(return_df)
 # pd.set_option('display.max_rows', None)
 # print(a)

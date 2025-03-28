@@ -19,13 +19,16 @@ class PerformanceMetrics:
 
         plt.figure(figsize=(10, 5))
    
+        # plt.plot(df.index, 100 * df['Annualized_stratgy_Return'], label='Annualized Return %', color='blue')
+        
         if len(market_idx):
            df['market_idx'] = market_idx 
            df['Market_Return'] = df['market_idx'].pct_change()
            df['Annualized_Market_Return'] = (1 + df['Market_Return']) ** (365 / df['Days_Diff']) - 1
-           plt.plot(df.index, 100 * df['Annualized_Market_Return'], label='Annualized Market Return %', color='red')
+           df['excess_return'] = df["Annualized_stratgy_Return"] - df["Annualized_Market_Return"]
+        #    plt.plot(df.index, 100 * df['Annualized_Market_Return'], label='Annualized Market Return %', color='red')
+           plt.plot(df.index, 100 * df['excess_return'], label='excess_return', color='red')
    
-        plt.plot(df.index, 100 * df['Annualized_stratgy_Return'], label='Annualized Return %', color='blue')
         plt.axhline(0, color='black', linestyle='--', linewidth=0.8)
         plt.xlabel("Date")
         plt.ylabel("Annualized Return %")
@@ -33,13 +36,21 @@ class PerformanceMetrics:
         plt.legend()
         plt.grid(True)
         plt.show()  
+
         return df
 
     @staticmethod
-    def calculate_sharpe_ratio(returns, risk_free_rate=0.01):
-        excess_returns = returns - risk_free_rate
-        sharpe_ratio = np.mean(excess_returns) / np.std(excess_returns) * np.sqrt(252)  # Annualize
-        return sharpe_ratio
+    def calculate_sharpe_ratio(df, risk_free_rate = 0.01, window = 50):
+        df["Rolling Mean Return"] = df['Annualized_Market_Return'].rolling(window).mean() - risk_free_rate
+        df["Rolling Volatility"] = df['Annualized_Market_Return'].rolling(window).std()
+        df["Sharpe Ratio"] = df["Rolling Mean Return"] / df["Rolling Volatility"]
+        df = df.dropna()
+        df["Sharpe Ratio"].plot(title="Rolling Sharpe Ratio", figsize=(12, 6))
+        plt.xlabel("Date")
+        plt.ylabel("Value")
+        plt.title("Sharpe Ratio")
+        plt.grid(True)
+        plt.show()
 
     @staticmethod
     def calculate_max_drawdown(portfolio_values):
@@ -52,8 +63,8 @@ class PerformanceMetrics:
     def calculate_position_value(timestamps, portfolio_values):
         plt.figure(figsize=(8, 5))
         plt.plot(timestamps, portfolio_values, marker='o', linestyle='-')
-        plt.xlabel("Timestamp")
+        plt.xlabel("Date")
         plt.ylabel("Value")
-        plt.title("Timestamp vs Value")
+        plt.title("Portfolio values")
         plt.grid(True)
         plt.show()          
